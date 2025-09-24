@@ -680,10 +680,22 @@
                                         </div>
                                     </div>
                                     <div class="mt-4 grid grid-cols-4 gap-2 border-t pt-3">
-                                        ${getNutrientAssessmentIcon(log.calories, dailyGoals.tdee / 4, 'kcal')}
-                                        ${getNutrientAssessmentIcon(log.protein, dailyGoals.protein / 4, 'g')}
-                                        ${getNutrientAssessmentIcon(log.carbohydrates, dailyGoals.carbs / 4, 'g')}
-                                        ${getNutrientAssessmentIcon(log.fat, dailyGoals.fat / 4, 'g')}
+                                        <div>
+                                            <p class="text-center text-xs text-slate-600 mb-1">卡路里</p>
+                                            ${getNutrientAssessmentIcon(log.calories, dailyGoals.tdee / 4, 'kcal')}
+                                        </div>
+                                        <div>
+                                            <p class="text-center text-xs text-slate-600 mb-1">蛋白質</p>
+                                            ${getNutrientAssessmentIcon(log.protein, dailyGoals.protein / 4, 'g')}
+                                        </div>
+                                        <div>
+                                            <p class="text-center text-xs text-slate-600 mb-1">碳水</p>
+                                            ${getNutrientAssessmentIcon(log.carbohydrates, dailyGoals.carbs / 4, 'g')}
+                                        </div>
+                                        <div>
+                                            <p class="text-center text-xs text-slate-600 mb-1">脂肪</p>
+                                            ${getNutrientAssessmentIcon(log.fat, dailyGoals.fat / 4, 'g')}
+                                        </div>
                                     </div>
                                 </div>
                                 <!-- Desktop Layout -->
