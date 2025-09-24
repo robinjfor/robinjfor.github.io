@@ -117,25 +117,30 @@
     
     <script type="module">
         // -----------------------------------------------------------------------------
-        // ** 重要 **：請在此處填入您的 Gemini API 金鑰
-        // 您可以從 Google AI Studio 取得金鑰：https://aistudio.google.com/app/apikey
+        // ** CONFIGURATION AREA **
         // -----------------------------------------------------------------------------
-        const GEMINI_API_KEY = "AIzaSyBHFJpoRvnyAk_4rSq-mpmv5lwzIeDl0yU";
-        
-        // -----------------------------------------------------------------------------
-        // ** 重要 **：請在此處貼上您從 Firebase Console 複製的 firebaseConfig 物件
-        // -----------------------------------------------------------------------------
-        const firebaseConfig = {
-            apiKey: "AIzaSyCxO9BP3ogE_IIw4x1bYLe_8lv7jwDQpQQ",
-            authDomain: "gemini-calorie-tracker-44649.firebaseapp.com",
-            projectId: "gemini-calorie-tracker-44649",
-            storageBucket: "gemini-calorie-tracker-44649.firebasestorage.app",
-            messagingSenderId: "396735785002",
-            appId: "1:396735785002:web:1890d9e89cff0087697b53"
+        const config = {
+            // ** 重要 **：請在此處填入您的 Gemini API 金鑰
+            // 您可以從 Google AI Studio 取得金鑰：https://aistudio.google.com/app/apikey
+            gemini: "AIzaSyBHFJpoRvnyAk_4rSq-mpmv5lwzIeDl0yU",
+            
+            // ** 重要 **：請在此處貼上您從 Firebase Console 複製的 firebaseConfig 物件
+            firebase: {
+                apiKey: "AIzaSyCxO9BP3ogE_IIw4x1bYLe_8lv7jwDQpQQ",
+                authDomain: "gemini-calorie-tracker-44649.firebaseapp.com",
+                projectId: "gemini-calorie-tracker-44649",
+                storageBucket: "gemini-calorie-tracker-44649.firebasestorage.app",
+                messagingSenderId: "396735785002",
+                appId: "1:396735785002:web:1890d9e89cff0087697b53"
+            }
         };
         // -----------------------------------------------------------------------------
+        // Polyfill process.env for the Gemini SDK
+        window.process = { env: { API_KEY: config.gemini } };
+        // -----------------------------------------------------------------------------
 
-        import { GoogleGenAI, Type } from 'https://esm.sh/@google/genai@1.20.0';
+
+        import { GoogleGenAI, Type } from 'https://esm.sh/@google/genai';
         import Chart from 'https://esm.sh/chart.js@4.4.3/auto';
 
         // Firebase v9+ Modular Imports
@@ -187,16 +192,16 @@
         async function init() {
             try {
                 // 1. 驗證金鑰
-                if (!GEMINI_API_KEY || GEMINI_API_KEY.startsWith("AIzaSy") === false) {
+                if (!config.gemini || config.gemini.startsWith("AIzaSy") === false) {
                     throw new Error("Gemini API 金鑰未設定或無效。");
                 }
-                if (!firebaseConfig || !firebaseConfig.apiKey) {
+                if (!config.firebase || !config.firebase.apiKey) {
                     throw new Error("Firebase 設定未完成。請編輯 index.html 並貼上您的 firebaseConfig。");
                 }
                 
                 // 2. 初始化服務 (v9+ syntax)
-                ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-                firebaseApp = initializeApp(firebaseConfig);
+                ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+                firebaseApp = initializeApp(config.firebase);
                 auth = getAuth(firebaseApp);
                 db = getFirestore(firebaseApp);
 
