@@ -115,11 +115,6 @@
       </div>
     </template>
     
-    <!-- Firebase SDKs -->
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
-
     <script type="module">
         // -----------------------------------------------------------------------------
         // ** 重要 **：請在此處填入您的 Gemini API 金鑰
@@ -142,6 +137,29 @@
 
         import { GoogleGenAI, Type } from 'https://esm.sh/@google/genai@1.20.0';
         import Chart from 'https://esm.sh/chart.js@4.4.3/auto';
+
+        // Firebase v9+ Modular Imports
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js';
+        import { 
+            getAuth, 
+            onAuthStateChanged, 
+            createUserWithEmailAndPassword, 
+            signInWithEmailAndPassword, 
+            signOut 
+        } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js';
+        import { 
+            getFirestore, 
+            doc, 
+            getDoc, 
+            setDoc, 
+            collection, 
+            getDocs, 
+            orderBy, 
+            query, 
+            addDoc, 
+            deleteDoc 
+        } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
+
 
         // --- 全局變數和狀態管理 ---
         let ai, firebaseApp, auth, db;
@@ -172,18 +190,18 @@
                 if (!GEMINI_API_KEY || GEMINI_API_KEY.startsWith("AIzaSy") === false) {
                     throw new Error("Gemini API 金鑰未設定或無效。");
                 }
-                if (!firebaseConfig || firebaseConfig.apiKey === "YOUR_API_KEY") {
+                if (!firebaseConfig || !firebaseConfig.apiKey) {
                     throw new Error("Firebase 設定未完成。請編輯 index.html 並貼上您的 firebaseConfig。");
                 }
                 
-                // 2. 初始化服務
+                // 2. 初始化服務 (v9+ syntax)
                 ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-                firebaseApp = firebase.initializeApp(firebaseConfig);
-                auth = firebase.auth();
-                db = firebase.firestore();
+                firebaseApp = initializeApp(firebaseConfig);
+                auth = getAuth(firebaseApp);
+                db = getFirestore(firebaseApp);
 
-                // 3. 監聽認證狀態
-                auth.onAuthStateChanged(handleAuthStateChange);
+                // 3. 監聽認證狀態 (v9+ syntax)
+                onAuthStateChanged(auth, handleAuthStateChange);
 
             } catch (error) {
                 console.error("應用程式初始化失敗:", error);
@@ -219,13 +237,17 @@
 
         async function fetchUserData(userId) {
             try {
-                const userDocRef = db.collection('users').doc(userId);
-                const profileDoc = await userDocRef.get();
+                // v9+ Firestore syntax
+                const userDocRef = doc(db, 'users', userId);
+                const profileDoc = await getDoc(userDocRef);
 
-                if (profileDoc.exists) {
+                if (profileDoc.exists()) {
                     const profileData = profileDoc.data();
-                    const mealLogsQuery = await userDocRef.collection('mealLogs').orderBy('date', 'desc').get();
-                    const mealLogs = mealLogsQuery.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    const mealLogsCollectionRef = collection(userDocRef, 'mealLogs');
+                    const mealLogsQuery = query(mealLogsCollectionRef, orderBy('date', 'desc'));
+                    const mealLogsSnapshot = await getDocs(mealLogsQuery);
+                    
+                    const mealLogs = mealLogsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     setState({ profile: profileData, mealLogs, view: 'log' });
                 } else {
                     // 新使用者，尚未建立個人檔案
@@ -239,7 +261,6 @@
         
         function setState(newState) {
             Object.assign(state, newState);
-            // 現在不需要 saveState()，因為資料直接儲存在 Firestore
             if (!state.loading) {
                  renderCurrentView();
             }
@@ -359,7 +380,6 @@
         }
 
         function renderProfileForm(container, existingProfile = null) {
-            // ... (The rest of this function's HTML generation is identical to the original) ...
             const isUpdate = !!existingProfile;
             const goals = ['增肌', '減脂', '減重', '維持'];
             const formHtml = `
@@ -437,7 +457,6 @@
         }
 
         function renderProfileView(container) {
-            // ... (This function is largely identical to the original) ...
             const dailyGoals = calculateDailyGoals(state.profile);
             const weightHistory = state.profile.weightHistory || [];
             const formattedHistory = weightHistory.map(entry => ({
@@ -496,7 +515,6 @@
         }
         
         function renderLogView(container) {
-             // ... (This function is identical to the original) ...
              const dailyGoals = calculateDailyGoals(state.profile);
              const today = new Date().toISOString().split('T')[0];
              const todaysLogs = state.mealLogs.filter(log => log.date.startsWith(today));
@@ -570,7 +588,6 @@
         }
         
         function renderMealHistory(container, dailyGoals) {
-            // ... (This function is identical to the original) ...
             const groupedLogs = state.mealLogs.reduce((acc, log) => {
               const date = new Date(log.date).toDateString();
               if (!acc[date]) acc[date] = [];
@@ -678,7 +695,6 @@
         }
 
         function renderWeightChart(data) {
-            // ... (This function is identical to the original) ...
             const ctx = document.getElementById('weight-chart')?.getContext('2d');
             if (!ctx) return;
             if (weightChart) {
@@ -769,7 +785,8 @@
             const password = e.target.password.value;
             const errorEl = document.getElementById('auth-error-signup');
             try {
-                await auth.createUserWithEmailAndPassword(email, password);
+                // v9+ auth syntax
+                await createUserWithEmailAndPassword(auth, email, password);
                 // onAuthStateChanged will handle the rest
             } catch(error) {
                 console.error("Signup error", error);
@@ -783,7 +800,8 @@
             const password = e.target.password.value;
             const errorEl = document.getElementById('auth-error-login');
             try {
-                await auth.signInWithEmailAndPassword(email, password);
+                // v9+ auth syntax
+                await signInWithEmailAndPassword(auth, email, password);
                 // onAuthStateChanged will handle the rest
             } catch(error) {
                 console.error("Login error", error);
@@ -792,7 +810,8 @@
         }
 
         async function handleLogout() {
-            await auth.signOut();
+            // v9+ auth syntax
+            await signOut(auth);
             // onAuthStateChanged will handle the rest
         }
         
@@ -811,7 +830,7 @@
                 weight: parseFloat(formData.get('weight')),
                 gender: formData.get('gender'),
                 activityLevel: formData.get('activityLevel'),
-                bodyFat: parseFloat(formData.get('bodyFat')) || undefined,
+                bodyFat: parseFloat(formData.get('bodyFat')) || null, // Use null for empty Firestore fields
                 goals: formData.getAll('goals'),
             };
 
@@ -833,8 +852,9 @@
             const fullProfile = { ...state.profile, ...newProfileData, weightHistory: updatedHistory };
             
             try {
-                // Use set with merge: true to create or update the document
-                await db.collection('users').doc(state.user.uid).set(fullProfile, { merge: true });
+                // v9+ Firestore syntax: Use set with merge to create or update
+                const userDocRef = doc(db, 'users', state.user.uid);
+                await setDoc(userDocRef, fullProfile, { merge: true });
                 setState({
                     profile: fullProfile,
                     view: isUpdate ? 'profile' : 'log'
@@ -857,7 +877,9 @@
             if (!logId || !state.user) return;
             openConfirmModal('您確定要刪除這筆記錄嗎？', async () => {
                 try {
-                    await db.collection('users').doc(state.user.uid).collection('mealLogs').doc(logId).delete();
+                    // v9+ Firestore syntax
+                    const logDocRef = doc(db, 'users', state.user.uid, 'mealLogs', logId);
+                    await deleteDoc(logDocRef);
                     const updatedLogs = state.mealLogs.filter(log => log.id !== logId);
                     setState({ mealLogs: updatedLogs });
                 } catch(error) {
@@ -867,7 +889,6 @@
         }
         
         async function handleGenerateSummaryClick(date) {
-             // ... (This function is identical to the original) ...
             if (!date) return;
             const logsForDate = state.mealLogs.filter(log => new Date(log.date).toDateString() === date);
             if (!logsForDate || logsForDate.length === 0) return;
@@ -887,7 +908,6 @@
 
         // --- 輔助函式 ---
         function calculateDailyGoals(profile) {
-            // ... (This function is identical to the original) ...
             const defaults = { tdee: 2000, protein: 120, fat: 60, carbs: 240, sodium: 2300, fiber: 30 };
             if (!profile) return defaults;
             
@@ -914,7 +934,6 @@
             }
             if (goals.includes('減重') || goals.includes('減脂')) {
                 tdee -= 400;
-                // If the goal is also muscle gain (recomposition), keep protein high
                 proteinMultiplier = goals.includes('增肌') ? 2.0 : 1.8;
             }
 
@@ -926,7 +945,6 @@
         }
 
         function calculateDailyTotals(logs) {
-            // ... (This function is identical to the original) ...
             return logs.reduce((acc, log) => {
                 acc.calories += log.calories || 0;
                 acc.protein += log.protein || 0;
@@ -939,7 +957,6 @@
         }
         
         // --- Gemini Service ---
-        // ... (This section is identical to the original, containing schemas and API call functions) ...
         const nutritionSchema = {
             type: Type.OBJECT,
             properties: {
@@ -1055,7 +1072,6 @@
         };
 
         // --- Modal 邏輯 ---
-        // ... (This section, including openModal, closeModal, openConfirmModal etc. is identical to the original) ...
         let activeModal = null;
         function openModal(modalContentHtml) {
             if (activeModal) closeModal();
@@ -1117,8 +1133,6 @@
 
         // --- Meal Log Modal ---
         function openMealLogModal(existingLog) {
-            // ... The HTML generation and view rendering logic inside this modal is largely identical ...
-            // The key change is in the handleSave function
             const defaultMealType = () => {
                 const hour = new Date().getHours();
                 if (hour >= 5 && hour < 11) return '早餐';
@@ -1299,18 +1313,19 @@
                     date: new Date(mealContext.date || existingLog.date).toISOString(),
                     mealType: mealContext.mealType || existingLog.mealType,
                 };
-                // Remove id field if it exists, Firestore will generate it
                 delete logEntry.id; 
 
                 try {
+                    const mealLogsCollectionRef = collection(db, 'users', state.user.uid, 'mealLogs');
                     if (existingLog?.id) {
                         // Update existing log
-                        await db.collection('users').doc(state.user.uid).collection('mealLogs').doc(existingLog.id).set(logEntry);
+                        const logDocRef = doc(mealLogsCollectionRef, existingLog.id);
+                        await setDoc(logDocRef, logEntry);
                         const updatedLogs = state.mealLogs.map(log => log.id === existingLog.id ? { ...logEntry, id: existingLog.id } : log);
                         setState({ mealLogs: updatedLogs });
                     } else {
                         // Add new log
-                        const docRef = await db.collection('users').doc(state.user.uid).collection('mealLogs').add(logEntry);
+                        const docRef = await addDoc(mealLogsCollectionRef, logEntry);
                         const newLog = { ...logEntry, id: docRef.id };
                         const newLogs = [...state.mealLogs, newLog].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
                         setState({ mealLogs: newLogs });
@@ -1330,7 +1345,6 @@
         }
 
         function openSummaryModal(isLoading = false, dailyTotals = null, dailyGoals = null) {
-            // ... (This function is identical to the original) ...
              const modalHtml = `
                 <div id="summary-modal" class="modal bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
                     <div class="p-5 border-b sticky top-0 bg-white z-10">
@@ -1349,7 +1363,6 @@
         }
 
         function updateSummaryModalContent(summaryData, error, dailyTotals, dailyGoals) {
-            // ... (This function is identical to the original) ...
             const contentEl = activeModal?.querySelector('#summary-content');
             if (!contentEl) return;
 
