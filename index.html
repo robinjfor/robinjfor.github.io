@@ -148,11 +148,7 @@
 
             if (user) {
                 state.user = user;
-                // TODO: Load data from Firestore
-                
-                // --- Temporary localStorage logic for demonstration ---
-                loadStateFromLocalStorage(); 
-                // --- End of temporary logic ---
+                await loadDataFromFirestore(); 
                 
                 renderAppStructure();
                 renderCurrentView();
@@ -176,42 +172,81 @@
             dom.appContainer.classList.add('hidden');
             dom.errorContainer.classList.remove('hidden');
         }
-        
-        // TODO: Replace with Firestore
-        function loadStateFromLocalStorage() {
+
+        // --- Firestore Data Functions ---
+        async function loadDataFromFirestore() {
+            if (!state.user) return;
             try {
-                const savedState = localStorage.getItem(`calorieTrackerState_${state.user.uid}`);
-                if (savedState) {
-                    const parsedState = JSON.parse(savedState);
-                    const logsWithIds = parsedState.mealLogs.map((log, index) => ({ ...log, id: log.id || `local-${index}-${Date.now()}` }));
-                    setState({ ...parsedState, mealLogs: logsWithIds, view: 'log' }, false);
+                const profileDocRef = doc(db, "users", state.user.uid);
+                const profileDocSnap = await getDoc(profileDocRef);
+
+                if (profileDocSnap.exists()) {
+                    state.profile = profileDocSnap.data();
                 } else {
-                    setState({ profile: null, mealLogs: [], view: 'profile' }, false);
+                    console.log("No profile found for user, directing to profile creation.");
+                    state.profile = null;
                 }
-            } catch (e) {
-                 console.error("無法從 localStorage 載入狀態:", e);
-                 setState({ profile: null, mealLogs: [], view: 'profile' }, false);
+
+                const mealLogsColRef = collection(db, "users", state.user.uid, "mealLogs");
+                const q = query(mealLogsColRef, orderBy("date", "desc"));
+                const mealLogsSnapshot = await getDocs(q);
+                
+                state.mealLogs = mealLogsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                state.view = state.profile ? 'log' : 'profile';
+                
+            } catch (error) {
+                console.error("Error loading data from Firestore:", error);
+                showError("無法載入資料", "從資料庫讀取您的個人檔案或餐點記錄時發生錯誤。");
             }
         }
 
-        // TODO: Replace with Firestore
-        function saveStateToLocalStorage() {
+        async function saveProfileToFirestore(profileData) {
             if (!state.user) return;
             try {
-                 localStorage.setItem(`calorieTrackerState_${state.user.uid}`, JSON.stringify({
-                    profile: state.profile,
-                    mealLogs: state.mealLogs,
-                 }));
-            } catch (e) {
-                console.error("無法儲存狀態到 localStorage:", e);
+                const profileDocRef = doc(db, "users", state.user.uid);
+                await setDoc(profileDocRef, profileData);
+                console.log("Profile saved to Firestore.");
+            } catch (error) {
+                console.error("Error saving profile to Firestore:", error);
+                alert("儲存個人檔案失敗！");
+            }
+        }
+
+        async function saveLogToFirestore(logEntry) {
+            if (!state.user) throw new Error("User not logged in");
+            try {
+                if (logEntry.id && logEntry.id.startsWith('local-')) {
+                    const { id, ...dataToSave } = logEntry;
+                    const docRef = await addDoc(collection(db, "users", state.user.uid, "mealLogs"), dataToSave);
+                    return { ...dataToSave, id: docRef.id };
+                } else {
+                    const { id, ...dataToSave } = logEntry;
+                    const logDocRef = doc(db, "users", state.user.uid, "mealLogs", id);
+                    await setDoc(logDocRef, dataToSave);
+                    return logEntry;
+                }
+            } catch (error) {
+                console.error("Error saving log to Firestore:", error);
+                alert("儲存餐點記錄失敗！");
+                throw error;
+            }
+        }
+
+        async function deleteLogFromFirestore(logId) {
+            if (!state.user) return;
+            try {
+                const logDocRef = doc(db, "users", state.user.uid, "mealLogs", logId);
+                await deleteDoc(logDocRef);
+                console.log("Log deleted from Firestore:", logId);
+            } catch (error) {
+                console.error("Error deleting log from Firestore:", error);
+                alert("刪除餐點記錄失敗！");
             }
         }
         
-        function setState(newState, shouldSave = true) {
+        function setState(newState) {
             Object.assign(state, newState);
-            if (shouldSave) {
-                 saveStateToLocalStorage(); // TODO: Replace with Firestore save
-            }
             if (!state.loading) {
                  renderCurrentView();
             }
@@ -737,8 +772,7 @@
                 // Navigation
                 const navButton = e.target.closest('.nav-button');
                 if (navButton) {
-                    setState({ view: navButton.dataset.view }, false);
-                    renderCurrentView(); // Re-render without saving
+                    setState({ view: navButton.dataset.view });
                     return;
                 }
                 
@@ -837,7 +871,7 @@
             
             const fullProfile = { ...state.profile, ...newProfileData, weightHistory: updatedHistory };
             
-            // TODO: Save fullProfile to Firestore
+            await saveProfileToFirestore(fullProfile);
             
             setState({
                 profile: fullProfile,
@@ -855,9 +889,9 @@
 
         function handleDeleteLogClick(logId) {
             if (!logId) return;
-            openConfirmModal('您確定要刪除這筆記錄嗎？', () => {
+            openConfirmModal('您確定要刪除這筆記錄嗎？', async () => {
                 const updatedLogs = state.mealLogs.filter(log => log.id !== logId);
-                // TODO: Delete from Firestore
+                await deleteLogFromFirestore(logId);
                 setState({ mealLogs: updatedLogs });
             });
         }
@@ -1279,27 +1313,31 @@
                 }
             };
 
-            const handleSave = () => {
+            const handleSave = async () => {
                 if (!analyzedData) return;
                 
                 const logEntry = {
                     ...analyzedData,
                     id: existingLog?.id || `local-${Date.now()}`,
-                    date: new Date(mealContext.date || existingLog.date).toISOString(),
-                    mealType: mealContext.mealType || existingLog.mealType,
+                    date: new Date(mealContext.date || existingLog?.date).toISOString(),
+                    mealType: mealContext.mealType || existingLog?.mealType,
                 };
 
-                let updatedLogs;
-                if (existingLog?.id) {
-                    updatedLogs = state.mealLogs.map(log => log.id === existingLog.id ? logEntry : log);
-                } else {
-                    updatedLogs = [...state.mealLogs, logEntry];
+                try {
+                    const savedLog = await saveLogToFirestore(logEntry);
+                    let updatedLogs;
+                    if (existingLog?.id) {
+                        updatedLogs = state.mealLogs.map(log => log.id === existingLog.id ? savedLog : log);
+                    } else {
+                        updatedLogs = [...state.mealLogs, savedLog];
+                    }
+                    
+                    updatedLogs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                    setState({ mealLogs: updatedLogs });
+                    closeModal();
+                } catch(error) {
+                    console.error("Save failed, not closing modal.", error);
                 }
-                
-                updatedLogs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-                // TODO: Save to Firestore
-                setState({ mealLogs: updatedLogs });
-                closeModal();
             };
 
             if (existingLog) {
